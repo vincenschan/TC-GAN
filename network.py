@@ -11,7 +11,7 @@ from tensorlayer.layers import (
 )
 
 class GAN(object):
-    def __init__(self, class_num, images_size, channel=3, code_dim=128, Lcategory_penalty=1.0, is_train=True, test_mode="generator"):
+    def __init__(self, class_num, images_size, channel=3, code_dim=128, Lcategory_penalty=1.0, learning_rate=0.0002, beta1=0.5, is_train=True, test_mode="generator"):
         # fake picture class
         self.class_num = class_num
         # input && output image size n x n
@@ -20,6 +20,10 @@ class GAN(object):
         self.channel = channel
         # code dimension for noise to input 
         self.code_dim = code_dim
+        # learning rate and beta1 for adam to optimize
+        self.learning_rate = learning_rate
+        self.beta1 = beta1
+        # penalty for category
         self.Lcategory_penalty = Lcategory_penalty
         # placeholder for noise input
         self.z = tf.placeholder(tf.float32, [None, code_dim], name='z_noise')
@@ -100,10 +104,10 @@ class GAN(object):
             net_h4 = FlattenLayer(net_h3, name='d/h4/flatten')
             # real or fake binary loss
             net_h4_1 = DenseLayer(net_h4, n_units=1, act=tf.identity,
-                    W_init = w_init, name='d/h4/lin_sigmoid')
+                    W_init = w_init, name='d/h4_1/lin_sigmoid')
             # category loss
             net_h4_2 = DenseLayer(net_h4, n_units=self.class_num, act=tf.identity,
-                    W_init = w_init, name='d/h4/lin_sigmoid')
+                    W_init = w_init, name='d/h4_2/lin_sigmoid')
             net_h4_1_logits = net_h4_1.outputs
             net_h4_2_logits = net_h4_2.outputs
             net_h4_1.outputs = tf.nn.sigmoid(net_h4_1.outputs)
@@ -137,8 +141,16 @@ class GAN(object):
         self.d_loss = self.d_loss_real + self.d_loss_fake + self.category_loss / 2.0
         self.g_loss = self.g_cheat_loss + self.category_loss_fake * self.Lcategory_penalty
 
+        # vars
+        self.g_vars = tl.layers.get_variables_with_name('generator', True, True)
+        self.d_vars = tl.layers.get_variables_with_name('discriminator', True, True)
+
+        # Define optimizers for updating discriminator and generator
+        self.d_optim = tf.train.AdamOptimizer(self.learning_rate, beta1=self.beta1) \
+                          .minimize(self.d_loss, var_list=self.d_vars)
+        self.g_optim = tf.train.AdamOptimizer(self.learning_rate, beta1=self.beta1) \
+                          .minimize(self.g_loss, var_list=self.g_vars)
         # set summary (record in tensor board)
-        
         self.d_loss_real_summary = tf.summary.scalar("d_loss_real", self.d_loss_real)
         self.d_loss_fake_summary = tf.summary.scalar("d_loss_fake", self.d_loss_fake)
         self.g_cheat_loss_summary  = tf.summary.scalar("g_cheat_loss", self.g_cheat_loss)
@@ -148,7 +160,7 @@ class GAN(object):
         self.d_loss_summary = tf.summary.scalar("d_loss", self.d_loss)
         self.g_loss_summary = tf.summary.scalar("g_loss", self.g_loss)
 
-        self.d_merged_summary = tf.summary.merge([self.d_loss_real_summary, self.d_loss_fake_summary,
+        self.d_merged_summary = tf.summary.merge([self.d_loss_real_summary, self.d_loss_fake_summary, self.category_loss_real_summary,
                                              self.category_loss_summary, self.d_loss_summary])
         self.g_merged_summary = tf.summary.merge([self.g_cheat_loss_summary, self.category_loss_fake_summary])
 
@@ -157,3 +169,4 @@ class GAN(object):
     
     def _build_discriminator(self):
         pass
+    
