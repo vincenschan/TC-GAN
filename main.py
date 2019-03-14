@@ -2,6 +2,7 @@ import numpy as np
 from argparse import ArgumentParser
 import os
 from train import Train
+import tensorflow as tf
 
 def build_parser():
     parser = ArgumentParser()
@@ -14,9 +15,12 @@ def build_parser():
     parser.add_argument("--data",dest="data",
                         help="chose dir to read training data",
                         default="./data/")
+    parser.add_argument("--gpu_id",dest="gpu_id",
+                        help="chose GPU to run the model, -1 for CPU.(used in multigpu env.)",
+                        default=0)
     return parser
 
-def main():
+def main(_):
     parser = build_parser()
     options = parser.parse_args()
     if not os.path.exists(options.data):
@@ -25,8 +29,11 @@ def main():
         os.makedirs(options.dir)
     if options.mode == "train":
         Train().train()
-
-
+    
+    # TODO: add memory limit when need.
+    if options.gpu_id >= 0:
+        os.environ["CUDA_VISIBLE_DEVICES"] = "%s" % options.gpu_id
+    
 
 if __name__ == "__main__":
-    main()
+    tf.app.run()

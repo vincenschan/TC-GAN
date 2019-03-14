@@ -11,7 +11,7 @@ from tensorlayer.layers import (
 )
 
 class GAN(object):
-    def __init__(self, class_num, images_size, channel=3, code_dim=128):
+    def __init__(self, class_num, images_size, channel=3, code_dim=128, is_train=True, test_mode="generator"):
         # fake picture class
         self.class_num = class_num
         # input && output image size n x n
@@ -24,7 +24,12 @@ class GAN(object):
         self.z = tf.placeholder(tf.float32, [None, code_dim], name='z_noise')
         self.label_class = tf.placeholder(tf.int32, [None, ], name='label_class')
         self.real_images =  tf.placeholder(tf.float32, [None, images_size, images_size, channel], name='real_images')
-        self.network = self.generator(self.z, self.label_class)
+        if is_train:
+            self._build_network()
+        elif test_mode=="generator":
+            self._build_generator()
+        elif test_mode=="discriminator":
+            self._build_discriminator()
 
     def generator(self, z, label_class, is_train=True, reuse=False):
         # NOTE: concate z & label might be wrong, need to test
@@ -92,8 +97,35 @@ class GAN(object):
                     is_train=is_train, gamma_init=gamma_init, name='d/h3/batch_norm')
 
             net_h4 = FlattenLayer(net_h3, name='d/h4/flatten')
-            net_h4 = DenseLayer(net_h4, n_units=1, act=tf.identity,
+            # real or fake binary loss
+            net_h4_1 = DenseLayer(net_h4, n_units=1, act=tf.identity,
+                    W_init = w_init, name='d/h4/lin_sigmoid')
+            # category loss
+            net_h4_2 = DenseLayer(net_h4, n_units=self.class_num, act=tf.identity,
                     W_init = w_init, name='d/h4/lin_sigmoid')
             logits = net_h4.outputs
-            net_h4.outputs = tf.nn.sigmoid(net_h4.outputs)
-        return net_h4, logits
+            net_h4_1.outputs = tf.nn.sigmoid(net_h4_1.outputs)
+        return net_h4_1, logits, net_h4_2
+    
+    def _build_network(self):
+        # Input noise into generator for training
+        self.net_g = self.generator(self.z, self.label_class, is_train=True, reuse=False)
+        # Input real and generated fake images into discriminator for training
+        self.net_d_1, self.d_logits, self.net_d_2 = self.discriminator(self.net_g.outputs, is_train=True, reuse=False)
+        _, self.d2_logits, self.net_d2_2 = self.discriminator(self.real_images, is_train=True, reuse=True)
+        # Input noise into generator for evaluation
+        # set is_train to False so that BatchNormLayer behave differently
+        self.net_g2 = self.generator(self.z, self.label_class, is_train=False, reuse=True)
+
+        # define loss
+        # discriminator: real images are labelled as 1
+        self.d_loss_real = tl.cost.sigmoid_cross_entropy(self.d2_logits, tf.ones_like(self.d2_logits), name='dreal')
+
+        # discriminator: images from generator (fake) are labelled as 0
+        self.d_loss_fake = tl.cost.sigmoid_cross_entropy(self.d_logits, tf.zeros_like(self.d_logits), name='dfake')
+
+    def _build_generator(self):
+        pass
+    
+    def _build_discriminator(self):
+        pass
