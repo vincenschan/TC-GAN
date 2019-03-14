@@ -11,16 +11,25 @@ from tensorlayer.layers import (
 )
 
 class GAN(object):
-    def __init__(self, class_num, images_size, channel):
+    def __init__(self, class_num, images_size, channel=3, code_dim=128):
+        # fake picture class
         self.class_num = class_num
+        # input && output image size n x n
         self.images_size = images_size
+        # input && output channel
         self.channel = channel
+        # code dimension for noise to input 
+        self.code_dim = code_dim
+        # placeholder for noise input
+        self.z = tf.placeholder(tf.float32, [None, code_dim], name='z_noise')
+        self.label_class = tf.placeholder(tf.int32, [None, ], name='label_class')
+        self.real_images =  tf.placeholder(tf.float32, [None, images_size, images_size, channel], name='real_images')
+        self.network = self.generator(self.z, self.label_class)
 
-    def generator(self, inputs, label_class , is_train=True, reuse=False):
+    def generator(self, z, label_class, is_train=True, reuse=False):
         # NOTE: concate z & label might be wrong, need to test
         labels_one_hot = tf.one_hot(label_class, self.class_num)
-        z_labels = tf.concat(1, [inputs, labels_one_hot])
-
+        z_labels = tf.concat([z, labels_one_hot], 1)
         image_size = self.images_size
         s16 = image_size // 16
         gf_dim = 64    # Dimension of gen filters in first conv layer. [64]
